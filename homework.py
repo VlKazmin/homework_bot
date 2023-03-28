@@ -11,7 +11,7 @@ import os
 import sys
 import time
 from http import HTTPStatus
-from typing import Tuple, Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any
 
 import requests
 import telegram
@@ -69,26 +69,22 @@ def check_tokens() -> bool:
     в лог и прерывает выполнение программы.
 
     """
-    token_data: Tuple[
-        Tuple[str, Optional[str]],
-        Tuple[str, Optional[str]],
-        Tuple[str, Optional[str]],
-    ] = (
+    token_data = [
         ("PRACTICUM_TOKEN", PRACTICUM_TOKEN),
         ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
         ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID),
+    ]
+    tokens_filled = all(
+        value not in ["", None, False, 0] for _, value in token_data
     )
-
-    for name, value in token_data:
-        if value is None:
-            logger.critical(
-                f"Отсутствует обязательная переменная окружения: {name}"
-            )
-            logger.info("Программа принудительно остановлена.")
-            return False
-
-    logger.info("Переменные окружения заполнены.")
-    return True
+    if tokens_filled:
+        logger.info("Переменные окружения заполнены.")
+    else:
+        missing_tokens = [name for name, value in token_data if value is None]
+        logger.error(
+            f"Отсутствуют переменные окружения: {', '.join(missing_tokens)}"
+        )
+    return tokens_filled
 
 
 def send_message(bot: telegram.Bot, message: str) -> None:
@@ -146,10 +142,26 @@ def get_api_answer(timestamp: int) -> Dict:
 
         return response.json()
 
-    except requests.exceptions.RequestException as e:
+    except requests.RequestException as e:
         message = f"Ошибка выполнения запроса к {ENDPOINT}: {e}"
         logging.error(message, exc_info=True)
         raise EndPointError(message)
+
+    except ConnectionError as e:
+        message = (
+            f"Не удалось установить соединение с {ENDPOINT}:"
+            f" {e}. Проверьте интернет-соединение."
+        )
+        logger.error(message, exc_info=True)
+        raise ConnectionError(
+            message.format(
+                **dict(
+                    ("PRACTICUM_TOKEN", PRACTICUM_TOKEN),
+                    ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
+                    ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID),
+                )
+            )
+        )
 
 
 def check_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -195,11 +207,7 @@ def check_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
         logger.error(f"Ожидаемый тип данных - int, получен {type(response)}.")
         raise TypeError("Тип данных не является целым числом.")
 
-    if not homeworks:
-        # logger.info("Статус работы прежний.")
-        return homeworks
-    # Возвращает данные последней записи
-    return homeworks[0]
+    return homeworks
 
 
 def parse_status(homework: Dict[str, str]) -> str:
@@ -245,7 +253,8 @@ def parse_status(homework: Dict[str, str]) -> str:
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
-        sys.exit("Программа остановлена. Смотри логи.")
+        logging.critical("Программа принудительно остановлена.")
+        sys.exit(1)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
@@ -256,7 +265,7 @@ def main():
             response = get_api_answer(timestamp)
             homework = check_response(response)
             if homework:
-                homework_status = parse_status(homework)
+                homework_status = parse_status(homework[0])
                 if homework_status != last_status:
                     send_message(bot, homework_status)
                     last_status = homework_status
@@ -264,10 +273,10 @@ def main():
                 logger.info("Работ на проверке нет.")
                 send_message(bot, "Работ на проверке нет.")
 
-        except Exception as error:
-            message = f"Сбой в работе программы: {error}"
+        except Exception as e:
+            message = f"Сбой в работе программы: {e}"
             logger.error(message, exc_info=True)
-            send_message(bot, message)
+
         finally:
             time.sleep(RETRY_PERIOD)
 
