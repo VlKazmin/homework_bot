@@ -11,7 +11,7 @@ import os
 import sys
 import time
 from http import HTTPStatus
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
 import requests
 import telegram
@@ -64,9 +64,7 @@ def check_tokens() -> bool:
     """Проверяет доступность переменных окружения.
 
     Проверяет, что обязательные переменные окружения PRACTICUM_TOKEN,
-    TELEGRAM_TOKEN и TELEGRAM_CHAT_ID заполнены. Если какая-то из
-    переменных отсутствует, функция записывает соответствующее сообщение
-    в лог и прерывает выполнение программы.
+    TELEGRAM_TOKEN и TELEGRAM_CHAT_ID заполнены.
 
     """
     token_data = [
@@ -74,17 +72,10 @@ def check_tokens() -> bool:
         ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
         ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID),
     ]
-    tokens_filled = all(
-        value not in ["", None, False, 0] for _, value in token_data
-    )
+    tokens_filled = all(value is not None for _, value in token_data)
+
     if tokens_filled:
-        logger.info("Переменные окружения заполнены.")
-    else:
-        missing_tokens = [name for name, value in token_data if value is None]
-        logger.error(
-            f"Отсутствуют переменные окружения: {', '.join(missing_tokens)}"
-        )
-    return tokens_filled
+        return tokens_filled
 
 
 def send_message(bot: telegram.Bot, message: str) -> None:
@@ -153,15 +144,7 @@ def get_api_answer(timestamp: int) -> Dict:
             f" {e}. Проверьте интернет-соединение."
         )
         logger.error(message, exc_info=True)
-        raise ConnectionError(
-            message.format(
-                **dict(
-                    ("PRACTICUM_TOKEN", PRACTICUM_TOKEN),
-                    ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
-                    ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID),
-                )
-            )
-        )
+        raise ConnectionError(message)
 
 
 def check_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -252,8 +235,11 @@ def parse_status(homework: Dict[str, str]) -> str:
 
 def main():
     """Основная логика работы бота."""
-    if not check_tokens():
-        logging.critical("Программа принудительно остановлена.")
+    if check_tokens():
+        logger.info("Переменные окружения заполнены.")
+    else:
+        logger.info("Отсутствуют обязательные переменные окружения.")
+        logging.critical("Отсутствуют обязательные переменные окружения.")
         sys.exit(1)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
