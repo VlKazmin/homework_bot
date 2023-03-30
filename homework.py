@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import requests
 import telegram
 from dotenv import load_dotenv
+
 from exceptions import EndPointError, EndpointStatusError, SendMessageError
 
 load_dotenv()
@@ -72,10 +73,7 @@ def check_tokens() -> bool:
         ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
         ("TELEGRAM_CHAT_ID", TELEGRAM_CHAT_ID),
     ]
-    tokens_filled = all(value is not None for _, value in token_data)
-
-    if tokens_filled:
-        return tokens_filled
+    return all(value for _, value in token_data)
 
 
 def send_message(bot: telegram.Bot, message: str) -> None:
@@ -238,7 +236,6 @@ def main():
     if check_tokens():
         logger.info("Переменные окружения заполнены.")
     else:
-        logger.info("Отсутствуют обязательные переменные окружения.")
         logging.critical("Отсутствуют обязательные переменные окружения.")
         sys.exit(1)
 
@@ -265,7 +262,3 @@ def main():
 
         finally:
             time.sleep(RETRY_PERIOD)
-
-
-if __name__ == "__main__":
-    main()
